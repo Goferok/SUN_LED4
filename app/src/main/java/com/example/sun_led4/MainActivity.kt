@@ -397,12 +397,22 @@ class MainActivity : AppCompatActivity() {
             return null
         }
 
+        private fun scalePWM(pwmValue: Int): Int {
+            return (pwmValue * 2.55).toInt().coerceIn(0, 255)  // Приводим к диапазону от 0 до 255
+        }
+
         private fun sendPWMValues(pwm2800K: Int, pwm4000K: Int, pwm5000K: Int, pwm5700K: Int) {
+            // Масштабируем значения перед отправкой
+            val scaledPwm2800K = scalePWM(pwm2800K)
+            val scaledPwm4000K = scalePWM(pwm4000K)
+            val scaledPwm5000K = scalePWM(pwm5000K)
+            val scaledPwm5700K = scalePWM(pwm5700K)
+
             // Получаем выбранное устройство из Spinner
             val selectedDevice = espDeviceSpinner.selectedItem.toString()
             val ipAddress = selectedDevice.substringAfter("(").substringBefore(")")
             val url = URL("http://$ipAddress:80/setPWM")
-            val postData = "2800K=$pwm2800K&4000K=$pwm4000K&5000K=$pwm5000K&5700K=$pwm5700K"
+            val postData = "2800K=$scaledPwm2800K&4000K=$scaledPwm4000K&5000K=$scaledPwm5000K&5700K=$scaledPwm5700K"
 
             with(url.openConnection() as HttpURLConnection) {
                 requestMethod = "POST"
@@ -422,6 +432,7 @@ class MainActivity : AppCompatActivity() {
                 }
             }
         }
+
         private fun sendPWMValuesWithDelay() {
             pwmUpdateRunnable?.let { pwmUpdateHandler.removeCallbacks(it) }  // Отменяем предыдущий запрос
             pwmUpdateRunnable = Runnable {
@@ -431,4 +442,3 @@ class MainActivity : AppCompatActivity() {
         }
     }
 }
-
