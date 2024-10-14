@@ -16,6 +16,8 @@ import java.net.InetAddress
 import java.net.URL
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
+import org.json.JSONObject
+
 
 class MainActivity : AppCompatActivity() {
 
@@ -80,8 +82,25 @@ class MainActivity : AppCompatActivity() {
         espListAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
         espDeviceSpinner.adapter = espListAdapter
 
+        // Если устройство уже выбрано, запросим состояние контроллера
+        if (espDeviceSpinner.selectedItem != null) {
+            requestControllerState()
+        }
+
         // Загрузка сохраненных устройств
         loadSavedDevices()
+
+        // Если есть устройства в списке, выбираем первое и запрашиваем состояние
+        if (espList.isNotEmpty()) {
+            espDeviceSpinner.setSelection(0)
+            requestControllerState() // Запрашиваем состояние контроллера
+        }
+
+        findESPButton.setOnClickListener {
+            checkControllerConnection()
+            // Запрашиваем текущее состояние контроллера после его обнаружения
+            requestControllerState()
+        }
 
         // Настройка ползунков для каждого канала
         setupSeekBar(seekBar2800K, percent2800K) { pwm2800K = it }
@@ -104,6 +123,7 @@ class MainActivity : AppCompatActivity() {
             // Отправляем команду на ESP32 для изменения состояния реле
             SendRelayTask().execute(relayState)
         }
+
 
         // Настройка ползунков температуры и яркости
         setupTemperatureSeekBar()
@@ -274,6 +294,53 @@ class MainActivity : AppCompatActivity() {
         }
         espListAdapter.notifyDataSetChanged()
     }
+    private fun requestControllerState() {
+        val selectedDevice = espDeviceSpinner.selectedItem.toString()
+        val ipAddress = selectedDevice.substringAfter("(").substringBefore(")")
+        val url = URL("http://$ipAddress:80/getState")
+
+        AsyncTask.execute {
+            try {
+                val connection = url.openConnection() as HttpURLConnection
+                connection.requestMethod = "GET"
+                connection.connectTimeout = 10000  // Увеличьте таймаут до 10 секунд
+
+                val responseCode = connection.responseCode
+                if (responseCode == HttpURLConnection.HTTP_OK) {
+                    val inputStream = connection.inputStream.bufferedReader().use { it.readText() }
+                    Log.d("RESPONSE", "Ответ от сервера: $inputStream")
+                    val jsonObject = JSONObject(inputStream)
+
+                    runOnUiThread {
+                        // Обновление ползунков и переключателя реле на основе данных с контроллера
+                        pwm2800K = jsonObject.getInt("pwm2800K")
+                        pwm4000K = jsonObject.getInt("pwm4000K")
+                        pwm5000K = jsonObject.getInt("pwm5000K")
+                        pwm5700K = jsonObject.getInt("pwm5700K")
+                        brightnessValue = jsonObject.getInt("brightness")
+                        val relayState = jsonObject.getBoolean("relayState")
+
+                        // Обновляем ползунки
+                        seekBar2800K.progress = (pwm2800K * 100) / 255
+                        seekBar4000K.progress = (pwm4000K * 100) / 255
+                        seekBar5000K.progress = (pwm5000K * 100) / 255
+                        seekBar5700K.progress = (pwm5700K * 100) / 255
+                        brightnessSeekBar.progress = brightnessValue
+
+                        // Обновляем состояние реле
+                        val switchRelayButton: Button = findViewById(R.id.switchRelayButton)
+                        switchRelayButton.text = if (relayState) "Выключить лампу" else "Включить лампу"
+                    }
+                } else {
+                    Log.e("ERROR", "Ошибка получения состояния: $responseCode")
+                }
+            } catch (e: Exception) {
+                Log.e("ERROR", "Ошибка соединения: ${e.message}")
+                e.printStackTrace()
+            }
+        }
+    }
+
 
     // Метод для обновления Spinner с именем устройства, IP и статусом
     private fun updateSpinner(deviceName: String, ipAddress: String, status: String) {
