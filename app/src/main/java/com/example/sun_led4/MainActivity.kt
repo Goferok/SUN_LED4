@@ -1,11 +1,14 @@
 package com.example.sun_led4
 
+import android.content.Context
+import android.net.wifi.WifiManager
 import android.os.AsyncTask
 import android.os.Bundle
 import android.util.Log
 import android.view.View
 import android.widget.*
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.view.isVisible
 import java.io.OutputStream
 import java.net.HttpURLConnection
 import java.net.InetAddress
@@ -30,9 +33,6 @@ class MainActivity : AppCompatActivity() {
     private lateinit var espDeviceSpinner: Spinner
     private lateinit var deviceListLabel: TextView
 
-    // Переменная для хранения IP-адреса выбранного устройства
-    private var selectedDeviceIP: String? = null
-
     private var pwm2800K: Int = 0
     private var pwm4000K: Int = 0
     private var pwm5000K: Int = 0
@@ -40,6 +40,7 @@ class MainActivity : AppCompatActivity() {
 
     private val espList = mutableListOf<String>()
     private lateinit var espListAdapter: ArrayAdapter<String>
+    private val sharedPreferencesName = "espDevices"
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -66,16 +67,16 @@ class MainActivity : AppCompatActivity() {
         espListAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
         espDeviceSpinner.adapter = espListAdapter
 
-        // Настройка слушателя выбора устройства из Spinner
-        espDeviceSpinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
-            override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
-                selectedDeviceIP = espList[position] // Сохраняем выбранный IP-адрес
-                Toast.makeText(this@MainActivity, "Выбрано устройство: $selectedDeviceIP", Toast.LENGTH_SHORT).show()
-            }
+        // Загрузка сохранённых устройств
+        loadDevices()
 
-            override fun onNothingSelected(parent: AdapterView<*>?) {
-                selectedDeviceIP = null
-            }
+        // Настройка видимости Spinner
+        if (espList.isEmpty()) {
+            espDeviceSpinner.visibility = View.GONE
+            deviceListLabel.visibility = View.GONE
+        } else {
+            espDeviceSpinner.visibility = View.VISIBLE
+            deviceListLabel.visibility = View.VISIBLE
         }
 
         // Настройка ползунков
@@ -91,7 +92,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         findESPButton.setOnClickListener {
-            scanLocalNetwork()
+            checkControllerConnection()
         }
     }
 
@@ -107,11 +108,7 @@ class MainActivity : AppCompatActivity() {
                 val scaledPwm4000K = (pwm4000K * 255) / 100
                 val scaledPwm5000K = (pwm5000K * 255) / 100
                 val scaledPwm5700K = (pwm5700K * 255) / 100
-
-                // Отправляем значения только если устройство выбрано
-                selectedDeviceIP?.let { ip ->
-                    SendPWMTask(ip).execute(scaledPwm2800K, scaledPwm4000K, scaledPwm5000K, scaledPwm5700K)
-                } ?: Toast.makeText(this@MainActivity, "Выберите устройство из списка", Toast.LENGTH_SHORT).show()
+                SendPWMTask().execute(scaledPwm2800K, scaledPwm4000K, scaledPwm5000K, scaledPwm5700K)
             }
 
             override fun onStartTrackingTouch(seekBar: SeekBar?) {}
@@ -129,7 +126,27 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    // Функция для поиска ESP32 через запросы по IP-адресам
+    // Функция для поиска ESP32 или его подключения через точку доступа
+    private fun checkControllerConnection() {
+        val wifiManager = applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
+        val currentSSID = wifiManager.connectionInfo.ssid
+
+        // Проверяем, подключены ли мы к сети контроллера ESP32
+        if (currentSSID.contains("ESP32_AP")) {
+            espList.add("192.168.4.1")  // IP адрес контроллера в режиме точки доступа
+            espListAdapter.notifyDataSetChanged()
+            saveDevices()  // Сохраняем устройства
+            Toast.makeText(this@MainActivity, "Подключено к контроллеру", Toast.LENGTH_SHORT).show()
+        } else {
+            scanLocalNetwork()
+        }
+
+        // Обновляем видимость Spinner
+        espDeviceSpinner.visibility = View.VISIBLE
+        deviceListLabel.visibility = View.VISIBLE
+    }
+
+    // Функция для сканирования локальной сети на наличие устройств ESP32
     private fun scanLocalNetwork() {
         val executor = Executors.newFixedThreadPool(10)
 
@@ -161,8 +178,7 @@ class MainActivity : AppCompatActivity() {
                                 runOnUiThread {
                                     espList.add(ip)
                                     espListAdapter.notifyDataSetChanged()
-                                    deviceListLabel.visibility = View.VISIBLE
-                                    espDeviceSpinner.visibility = View.VISIBLE
+                                    saveDevices()  // Сохраняем устройства
                                     Toast.makeText(this@MainActivity, "Найдено устройство: $ip", Toast.LENGTH_SHORT).show()
                                 }
                             } else {
@@ -177,12 +193,31 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    // Функция для сохранения устройств в SharedPreferences
+    private fun saveDevices() {
+        val sharedPreferences = getSharedPreferences(sharedPreferencesName, Context.MODE_PRIVATE)
+        val editor = sharedPreferences.edit()
+        editor.putString("devices", espList.joinToString(","))
+        editor.apply()
+    }
+
+    // Функция для загрузки сохранённых устройств из SharedPreferences
+    private fun loadDevices() {
+        val sharedPreferences = getSharedPreferences(sharedPreferencesName, Context.MODE_PRIVATE)
+        val savedDevices = sharedPreferences.getString("devices", "")
+
+        if (!savedDevices.isNullOrEmpty()) {
+            espList.addAll(savedDevices.split(","))
+            espListAdapter.notifyDataSetChanged()
+        }
+    }
+
     // Задача для отправки SSID и пароля на ESP32
     private inner class SendWiFiDataTask : AsyncTask<String, Void, Void>() {
         override fun doInBackground(vararg params: String?): Void? {
             val ssid = params[0] ?: return null
             val password = params[1] ?: return null
-            val url = URL("http://192.168.4.1:80/setWiFi")  // Используем выбранное устройство
+            val url = URL("http://192.168.4.1:80/setWiFi")
             val postData = "ssid=$ssid&password=$password"
 
             with(url.openConnection() as HttpURLConnection) {
@@ -197,28 +232,30 @@ class MainActivity : AppCompatActivity() {
 
                 val responseCode = responseCode
                 if (responseCode == HttpURLConnection.HTTP_OK) {
-                    println("WiFi данные отправлены успешно")
+                    println("WiFi data sent successfully")
                 } else {
-                    println("Ошибка при отправке WiFi данных: $responseCode")
+                    println("Error sending WiFi data: $responseCode")
                 }
             }
             return null
         }
     }
 
-    // Задача для отправки данных PWM
-    private inner class SendPWMTask(private val ip: String) : AsyncTask<Int, Void, Void>() {
+    // Задача для отправки данных PWM на выбранное устройство
+    private inner class SendPWMTask : AsyncTask<Int, Void, Void>() {
         override fun doInBackground(vararg pwmValues: Int?): Void? {
             val pwm2800K = pwmValues[0] ?: return null
             val pwm4000K = pwmValues[1] ?: return null
             val pwm5000K = pwmValues[2] ?: return null
             val pwm5700K = pwmValues[3] ?: return null
-            sendPWMValues(pwm2800K, pwm4000K, pwm5000K, pwm5700K, ip)
+            sendPWMValues(pwm2800K, pwm4000K, pwm5000K, pwm5700K)
             return null
         }
 
-        private fun sendPWMValues(pwm2800K: Int, pwm4000K: Int, pwm5000K: Int, pwm5700K: Int, ip: String) {
-            val url = URL("http://$ip:80/setPWM")  // Отправляем на выбранное устройство
+        private fun sendPWMValues(pwm2800K: Int, pwm4000K: Int, pwm5000K: Int, pwm5700K: Int) {
+            // Получаем выбранное устройство из Spinner
+            val selectedDevice = espDeviceSpinner.selectedItem.toString()
+            val url = URL("http://$selectedDevice:80/setPWM")
             val postData = "2800K=$pwm2800K&4000K=$pwm4000K&5000K=$pwm5000K&5700K=$pwm5700K"
 
             with(url.openConnection() as HttpURLConnection) {
@@ -233,12 +270,11 @@ class MainActivity : AppCompatActivity() {
 
                 val responseCode = responseCode
                 if (responseCode == HttpURLConnection.HTTP_OK) {
-                    println("PWM данные отправлены успешно")
+                    println("PWM values sent successfully to $selectedDevice")
                 } else {
-                    println("Ошибка при отправке PWM данных: $responseCode")
+                    println("Error sending PWM values to $selectedDevice: $responseCode")
                 }
             }
         }
     }
 }
-
