@@ -21,6 +21,60 @@
             android:layout_marginBottom="16dp"
             android:textStyle="bold" />
 
+        <!-- Слайдер для выбора температуры света -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Температура света (от 2800K до 5700K)"
+            android:textSize="18sp"
+            android:textColor="@color/black"
+            android:layout_marginBottom="8dp" />
+
+        <SeekBar
+            android:id="@+id/temperatureSeekBar"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:max="2900"
+            android:progress="0"
+            android:thumb="@drawable/custom_thumb"
+            android:progressDrawable="@drawable/custom_seekbar" />
+
+        <TextView
+            android:id="@+id/colorTemperatureText"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Температура света: 2800K"
+            android:textSize="16sp"
+            android:textColor="@color/black"
+            android:layout_marginBottom="16dp" />
+
+        <!-- Слайдер для выбора яркости -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Яркость (0% - 100%)"
+            android:textSize="18sp"
+            android:textColor="@color/black"
+            android:layout_marginBottom="8dp" />
+
+        <SeekBar
+            android:id="@+id/brightnessSeekBar"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:max="100"
+            android:progress="100"
+            android:thumb="@drawable/custom_thumb"
+            android:progressDrawable="@drawable/custom_seekbar" />
+
+        <TextView
+            android:id="@+id/brightnessTextView"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Яркость: 100%"
+            android:textSize="16sp"
+            android:textColor="@color/black"
+            android:layout_marginBottom="16dp" />
+
         <!-- 2800K -->
         <TextView
             android:layout_width="wrap_content"
@@ -134,14 +188,6 @@
             android:layout_marginBottom="16dp" />
 
         <!-- Поля для ввода SSID и пароля -->
-        <TextView
-            android:id="@+id/colorTemperatureText"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="16dp"
-            android:text="Расчетная температура света: 0K"
-            android:textSize="18sp" />
-
         <EditText
             android:id="@+id/ssidInput"
             android:layout_width="match_parent"

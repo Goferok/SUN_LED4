@@ -14,9 +14,14 @@ import java.net.InetAddress
 import java.net.URL
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
+import android.os.Handler
+import android.os.Looper
 
 class MainActivity : AppCompatActivity() {
 
+    private var pwmUpdateHandler = Handler(Looper.getMainLooper())
+    private var pwmUpdateRunnable: Runnable? = null
+    private val pwmUpdateDelay: Long = 100  // Задержка 100 мс между отправками
     private lateinit var seekBar2800K: SeekBar
     private lateinit var percent2800K: TextView
     private lateinit var seekBar4000K: SeekBar
@@ -25,7 +30,10 @@ class MainActivity : AppCompatActivity() {
     private lateinit var percent5000K: TextView
     private lateinit var seekBar5700K: SeekBar
     private lateinit var percent5700K: TextView
+    private lateinit var temperatureSeekBar: SeekBar
+    private lateinit var brightnessSeekBar: SeekBar
     private lateinit var temperatureTextView: TextView
+    private lateinit var brightnessTextView: TextView
     private lateinit var ssidEditText: EditText
     private lateinit var passwordEditText: EditText
     private lateinit var sendWiFiDataButton: Button
@@ -37,6 +45,8 @@ class MainActivity : AppCompatActivity() {
     private var pwm4000K: Int = 0
     private var pwm5000K: Int = 0
     private var pwm5700K: Int = 0
+    private var temperatureValue: Int = 2800  // Значение температуры
+    private var brightnessValue: Int = 100    // Значение яркости
 
     private val espList = mutableListOf<String>()
     private lateinit var espListAdapter: ArrayAdapter<String>
@@ -54,7 +64,10 @@ class MainActivity : AppCompatActivity() {
         percent5000K = findViewById(R.id.percent5000K)
         seekBar5700K = findViewById(R.id.seekBar5700K)
         percent5700K = findViewById(R.id.percent5700K)
+        temperatureSeekBar = findViewById(R.id.temperatureSeekBar)
+        brightnessSeekBar = findViewById(R.id.brightnessSeekBar)
         temperatureTextView = findViewById(R.id.colorTemperatureText)
+        brightnessTextView = findViewById(R.id.brightnessTextView)
         ssidEditText = findViewById(R.id.ssidInput)
         passwordEditText = findViewById(R.id.passwordInput)
         sendWiFiDataButton = findViewById(R.id.connectWifiButton)
@@ -69,11 +82,15 @@ class MainActivity : AppCompatActivity() {
         // Загрузка сохраненных устройств
         loadSavedDevices()
 
-        // Настройка ползунков
+        // Настройка ползунков для каждого канала
         setupSeekBar(seekBar2800K, percent2800K) { pwm2800K = it }
         setupSeekBar(seekBar4000K, percent4000K) { pwm4000K = it }
         setupSeekBar(seekBar5000K, percent5000K) { pwm5000K = it }
         setupSeekBar(seekBar5700K, percent5700K) { pwm5700K = it }
+
+        // Настройка ползунков температуры и яркости
+        setupTemperatureSeekBar()
+        setupBrightnessSeekBar()
 
         sendWiFiDataButton.setOnClickListener {
             val ssid = ssidEditText.text.toString()
@@ -90,22 +107,25 @@ class MainActivity : AppCompatActivity() {
     private fun setupSeekBar(seekBar: SeekBar, percentView: TextView, onChange: (Int) -> Unit) {
         seekBar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
             override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
+                // Отображаем текущее значение в текстовом поле, но не отправляем на контроллер
                 percentView.text = "$progress%"
-                onChange(progress)
-                updateTemperature()
-
-                val scaledPwm2800K = (pwm2800K * 255) / 100
-                val scaledPwm4000K = (pwm4000K * 255) / 100
-                val scaledPwm5000K = (pwm5000K * 255) / 100
-                val scaledPwm5700K = (pwm5700K * 255) / 100
-                SendPWMTask().execute(scaledPwm2800K, scaledPwm4000K, scaledPwm5000K, scaledPwm5700K)
             }
 
-            override fun onStartTrackingTouch(seekBar: SeekBar?) {}
-            override fun onStopTrackingTouch(seekBar: SeekBar?) {}
+            override fun onStartTrackingTouch(seekBar: SeekBar?) {
+                // Можно сделать что-то при начале перетаскивания (если нужно)
+            }
+
+            override fun onStopTrackingTouch(seekBar: SeekBar?) {
+                // Когда пользователь отпустил ползунок, обновляем значение PWM
+                val progress = seekBar?.progress ?: 0
+                onChange(progress)
+                updateTemperature()  // Пересчёт температуры
+                sendPWMValuesWithDelay()  // Отправляем PWM с задержкой, чтобы избежать частых обновлений
+            }
         })
     }
 
+    // Функция для обновления отображения температуры
     private fun updateTemperature() {
         val totalPWM = pwm2800K + pwm4000K + pwm5000K + pwm5700K
         if (totalPWM > 0) {
@@ -114,6 +134,92 @@ class MainActivity : AppCompatActivity() {
         } else {
             temperatureTextView.text = "Температура свечения: N/A"
         }
+    }
+    // Настройка ползунка температуры
+    private fun setupTemperatureSeekBar() {
+        temperatureSeekBar.max = 2900 // Разница между 2800 и 5700K
+        temperatureSeekBar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
+                temperatureValue = 2800 + progress
+                temperatureTextView.text = "Температура: $temperatureValue K"
+            }
+
+            override fun onStartTrackingTouch(seekBar: SeekBar?) {
+                // Можно сделать что-то при начале перетаскивания (если нужно)
+            }
+
+            override fun onStopTrackingTouch(seekBar: SeekBar?) {
+                // Когда пользователь отпустил ползунок, обновляем уровни каналов и отправляем данные
+                updateLEDChannels()
+                sendPWMValuesWithDelay()
+            }
+        })
+    }
+
+
+
+    // Настройка ползунка яркости
+    private fun setupBrightnessSeekBar() {
+        brightnessSeekBar.max = 100 / 5  // Ползунок яркости с шагом 5%
+        brightnessSeekBar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
+                brightnessValue = progress * 5
+                brightnessTextView.text = "Яркость: $brightnessValue%"
+            }
+
+            override fun onStartTrackingTouch(seekBar: SeekBar?) {
+                // Можно сделать что-то при начале перетаскивания (если нужно)
+            }
+
+            override fun onStopTrackingTouch(seekBar: SeekBar?) {
+                // Когда пользователь отпустил ползунок, обновляем уровни каналов и отправляем данные
+                updateLEDChannels()
+                sendPWMValuesWithDelay()
+            }
+        })
+    }
+
+
+    // Обновление значений каналов на основе выбранной температуры и яркости
+    private fun updateLEDChannels() {
+        val normalizedBrightness = brightnessValue / 100.0
+
+        // Логика распределения мощности на каналы
+        if (temperatureValue <= 2800) {
+            pwm2800K = (normalizedBrightness * 255).toInt()
+            pwm4000K = 0
+            pwm5000K = 0
+            pwm5700K = 0
+        } else if (temperatureValue >= 5700) {
+            pwm2800K = 0
+            pwm4000K = 0
+            pwm5000K = 0
+            pwm5700K = (normalizedBrightness * 255).toInt()
+        } else {
+            // Используем все 4 канала для промежуточных температур
+            val tempRange = 5700 - 2800
+            val relativeTemp = (temperatureValue - 2800).toFloat() / tempRange
+
+            pwm2800K = ((1 - relativeTemp) * normalizedBrightness * 255).toInt()
+            pwm4000K = ((1 - Math.abs(0.5f - relativeTemp) * 2) * normalizedBrightness * 255).toInt()
+            pwm5000K = ((1 - Math.abs(0.5f - relativeTemp) * 2) * normalizedBrightness * 255).toInt()
+            pwm5700K = (relativeTemp * normalizedBrightness * 255).toInt()
+        }
+
+        // Обновляем слайдеры
+        seekBar2800K.progress = (pwm2800K * 100) / 255
+        seekBar4000K.progress = (pwm4000K * 100) / 255
+        seekBar5000K.progress = (pwm5000K * 100) / 255
+        seekBar5700K.progress = (pwm5700K * 100) / 255
+
+        // Отправляем обновленные значения PWM на устройство
+        sendPWMValues()
+    }
+
+
+
+    private fun sendPWMValues() {
+        SendPWMTask().execute(pwm2800K, pwm4000K, pwm5000K, pwm5700K)
     }
 
     // Загрузка сохраненных устройств
@@ -219,7 +325,6 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-
     // Метод для показа диалогового окна ввода имени устройства
     private fun showNameInputDialog(ipAddress: String) {
         val builder = AlertDialog.Builder(this)
@@ -271,7 +376,14 @@ class MainActivity : AppCompatActivity() {
             return null
         }
     }
-
+    // Функция для отправки PWM с задержкой
+    private fun sendPWMValuesWithDelay() {
+        pwmUpdateRunnable?.let { pwmUpdateHandler.removeCallbacks(it) }  // Отменяем предыдущий запрос
+        pwmUpdateRunnable = Runnable {
+            sendPWMValues()  // Здесь вызывается функция отправки PWM
+        }
+        pwmUpdateHandler.postDelayed(pwmUpdateRunnable!!, pwmUpdateDelay)  // Устанавливаем задержку
+    }
     // Задача для отправки данных PWM на выбранное устройство
     private inner class SendPWMTask : AsyncTask<Int, Void, Void>() {
         override fun doInBackground(vararg pwmValues: Int?): Void? {
@@ -307,6 +419,13 @@ class MainActivity : AppCompatActivity() {
                     println("Error sending PWM values to $selectedDevice: $responseCode")
                 }
             }
+        }
+        private fun sendPWMValuesWithDelay() {
+            pwmUpdateRunnable?.let { pwmUpdateHandler.removeCallbacks(it) }  // Отменяем предыдущий запрос
+            pwmUpdateRunnable = Runnable {
+                sendPWMValues()  // Здесь вызывается функция отправки PWM
+            }
+            pwmUpdateHandler.postDelayed(pwmUpdateRunnable!!, pwmUpdateDelay)  // Устанавливаем задержку
         }
     }
 }
