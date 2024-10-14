@@ -103,10 +103,10 @@ class MainActivity : AppCompatActivity() {
                 onChange(progress)
                 updateTemperature()
 
-                val scaledPwm2800K = (pwm2800K * 255) / 100
-                val scaledPwm4000K = (pwm4000K * 255) / 100
-                val scaledPwm5000K = (pwm5000K * 255) / 100
-                val scaledPwm5700K = (pwm5700K * 255) / 100
+                val scaledPwm2800K = (pwm2800K * 255) / 50
+                val scaledPwm4000K = (pwm4000K * 255) / 50
+                val scaledPwm5000K = (pwm5000K * 255) / 50
+                val scaledPwm5700K = (pwm5700K * 255) / 50
 
                 // Отправляем значения только если устройство выбрано
                 selectedDeviceIP?.let { ip ->
