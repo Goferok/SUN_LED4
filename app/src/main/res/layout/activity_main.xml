@@ -21,6 +21,14 @@
             android:layout_marginBottom="16dp"
             android:textStyle="bold" />
 
+        <Button
+            android:id="@+id/switchRelayButton"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Включить лампу"
+            android:layout_marginTop="16dp"
+            android:layout_gravity="center" />
+
         <!-- Слайдер для выбора температуры света -->
         <TextView
             android:layout_width="wrap_content"
