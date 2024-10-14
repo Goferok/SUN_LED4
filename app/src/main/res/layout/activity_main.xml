@@ -1,184 +1,189 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:orientation="vertical"
-    android:padding="16dp"
     android:background="@color/white">
 
-    <!-- Заголовок -->
-    <TextView
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="Управление светодиодами"
-        android:textSize="22sp"
-        android:textColor="@color/black"
-        android:layout_gravity="center"
-        android:layout_marginBottom="16dp"
-        android:textStyle="bold" />
-
-    <!-- 2800K -->
-    <TextView
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="2800K"
-        android:textSize="18sp"
-        android:textColor="@color/black"
-        android:layout_marginBottom="8dp" />
-
-    <SeekBar
-        android:id="@+id/seekBar2800K"
+    <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:max="100"
-        android:progress="0"
-        android:thumb="@drawable/custom_thumb"
-        android:progressDrawable="@drawable/custom_seekbar" />
+        android:orientation="vertical"
+        android:padding="16dp">
 
-    <TextView
-        android:id="@+id/percent2800K"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="0%"
-        android:textSize="16sp"
-        android:textColor="@color/black"
-        android:layout_gravity="right"
-        android:layout_marginBottom="16dp" />
+        <!-- Заголовок -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Управление светодиодами"
+            android:textSize="22sp"
+            android:textColor="@color/black"
+            android:layout_gravity="center"
+            android:layout_marginBottom="16dp"
+            android:textStyle="bold" />
 
-    <!-- 4000K -->
-    <TextView
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="4000K"
-        android:textSize="18sp"
-        android:textColor="@color/black"
-        android:layout_marginBottom="8dp" />
+        <!-- 2800K -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="2800K"
+            android:textSize="18sp"
+            android:textColor="@color/black"
+            android:layout_marginBottom="8dp" />
 
-    <SeekBar
-        android:id="@+id/seekBar4000K"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:max="100"
-        android:progress="0"
-        android:thumb="@drawable/custom_thumb"
-        android:progressDrawable="@drawable/custom_seekbar" />
+        <SeekBar
+            android:id="@+id/seekBar2800K"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:max="100"
+            android:progress="0"
+            android:thumb="@drawable/custom_thumb"
+            android:progressDrawable="@drawable/custom_seekbar" />
 
-    <TextView
-        android:id="@+id/percent4000K"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="0%"
-        android:textSize="16sp"
-        android:textColor="@color/black"
-        android:layout_gravity="right"
-        android:layout_marginBottom="16dp" />
+        <TextView
+            android:id="@+id/percent2800K"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="0%"
+            android:textSize="16sp"
+            android:textColor="@color/black"
+            android:layout_gravity="right"
+            android:layout_marginBottom="16dp" />
 
-    <!-- 5000K -->
-    <TextView
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="5000K"
-        android:textSize="18sp"
-        android:textColor="@color/black"
-        android:layout_marginBottom="8dp" />
+        <!-- 4000K -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="4000K"
+            android:textSize="18sp"
+            android:textColor="@color/black"
+            android:layout_marginBottom="8dp" />
 
-    <SeekBar
-        android:id="@+id/seekBar5000K"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:max="100"
-        android:progress="0"
-        android:thumb="@drawable/custom_thumb"
-        android:progressDrawable="@drawable/custom_seekbar" />
+        <SeekBar
+            android:id="@+id/seekBar4000K"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:max="100"
+            android:progress="0"
+            android:thumb="@drawable/custom_thumb"
+            android:progressDrawable="@drawable/custom_seekbar" />
 
-    <TextView
-        android:id="@+id/percent5000K"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="0%"
-        android:textSize="16sp"
-        android:textColor="@color/black"
-        android:layout_gravity="right"
-        android:layout_marginBottom="16dp" />
+        <TextView
+            android:id="@+id/percent4000K"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="0%"
+            android:textSize="16sp"
+            android:textColor="@color/black"
+            android:layout_gravity="right"
+            android:layout_marginBottom="16dp" />
 
-    <!-- 5700K -->
-    <TextView
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="5700K"
-        android:textSize="18sp"
-        android:textColor="@color/black"
-        android:layout_marginBottom="8dp" />
+        <!-- 5000K -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="5000K"
+            android:textSize="18sp"
+            android:textColor="@color/black"
+            android:layout_marginBottom="8dp" />
 
-    <SeekBar
-        android:id="@+id/seekBar5700K"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:max="100"
-        android:progress="0"
-        android:thumb="@drawable/custom_thumb"
-        android:progressDrawable="@drawable/custom_seekbar" />
+        <SeekBar
+            android:id="@+id/seekBar5000K"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:max="100"
+            android:progress="0"
+            android:thumb="@drawable/custom_thumb"
+            android:progressDrawable="@drawable/custom_seekbar" />
 
-    <TextView
-        android:id="@+id/percent5700K"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="0%"
-        android:textSize="16sp"
-        android:textColor="@color/black"
-        android:layout_gravity="right"
-        android:layout_marginBottom="16dp" />
+        <TextView
+            android:id="@+id/percent5000K"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="0%"
+            android:textSize="16sp"
+            android:textColor="@color/black"
+            android:layout_gravity="right"
+            android:layout_marginBottom="16dp" />
 
-    <!-- Поля для ввода SSID и пароля -->
-    <TextView
-        android:id="@+id/colorTemperatureText"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="16dp"
-        android:text="Расчетная температура света: 0K"
-        android:textSize="18sp" />
+        <!-- 5700K -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="5700K"
+            android:textSize="18sp"
+            android:textColor="@color/black"
+            android:layout_marginBottom="8dp" />
 
-    <EditText
-        android:id="@+id/ssidInput"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:hint="Введите SSID"
-        android:inputType="text" />
+        <SeekBar
+            android:id="@+id/seekBar5700K"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:max="100"
+            android:progress="0"
+            android:thumb="@drawable/custom_thumb"
+            android:progressDrawable="@drawable/custom_seekbar" />
 
-    <EditText
-        android:id="@+id/passwordInput"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:hint="Введите пароль"
-        android:inputType="textPassword" />
+        <TextView
+            android:id="@+id/percent5700K"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="0%"
+            android:textSize="16sp"
+            android:textColor="@color/black"
+            android:layout_gravity="right"
+            android:layout_marginBottom="16dp" />
 
-    <!-- Кнопка для отправки данных SSID и пароля -->
-    <Button
-        android:id="@+id/connectWifiButton"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="Подключиться к Wi-Fi" />
+        <!-- Поля для ввода SSID и пароля -->
+        <TextView
+            android:id="@+id/colorTemperatureText"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:text="Расчетная температура света: 0K"
+            android:textSize="18sp" />
 
-    <!-- Кнопка для поиска устройств ESP32 -->
-    <Button
-        android:id="@+id/findESPButton"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="Найти устройства ESP32" />
+        <EditText
+            android:id="@+id/ssidInput"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="Введите SSID"
+            android:inputType="text" />
 
-    <!-- Список для выбора устройства ESP32 -->
-    <TextView
-        android:id="@+id/deviceListLabel"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="Выберите устройство ESP32:"
-        android:visibility="gone"
-        android:layout_marginTop="16dp"/>
+        <EditText
+            android:id="@+id/passwordInput"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="Введите пароль"
+            android:inputType="textPassword" />
 
-    <Spinner
-        android:id="@+id/deviceSpinner"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:visibility="gone" />
+        <!-- Кнопка для отправки данных SSID и пароля -->
+        <Button
+            android:id="@+id/connectWifiButton"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Подключиться к Wi-Fi" />
 
-</LinearLayout>
+        <!-- Кнопка для поиска устройств ESP32 -->
+        <Button
+            android:id="@+id/findESPButton"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Найти устройства ESP32" />
+
+        <!-- Список для выбора устройства ESP32 -->
+        <TextView
+            android:id="@+id/deviceListLabel"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Выберите устройство ESP32:"
+            android:layout_marginTop="16dp" />
+
+        <Spinner
+            android:id="@+id/deviceSpinner"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="16dp" />
+
+    </LinearLayout>
+
+</ScrollView>

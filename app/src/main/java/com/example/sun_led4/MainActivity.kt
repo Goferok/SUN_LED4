@@ -5,15 +5,15 @@ import android.net.wifi.WifiManager
 import android.os.AsyncTask
 import android.os.Bundle
 import android.util.Log
-import android.view.View
 import android.widget.*
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
-import androidx.core.view.isVisible
 import java.io.OutputStream
 import java.net.HttpURLConnection
 import java.net.InetAddress
 import java.net.URL
 import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 
 class MainActivity : AppCompatActivity() {
 
@@ -40,7 +40,6 @@ class MainActivity : AppCompatActivity() {
 
     private val espList = mutableListOf<String>()
     private lateinit var espListAdapter: ArrayAdapter<String>
-    private val sharedPreferencesName = "espDevices"
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -67,17 +66,8 @@ class MainActivity : AppCompatActivity() {
         espListAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
         espDeviceSpinner.adapter = espListAdapter
 
-        // Загрузка сохранённых устройств
-        loadDevices()
-
-        // Настройка видимости Spinner
-        if (espList.isEmpty()) {
-            espDeviceSpinner.visibility = View.GONE
-            deviceListLabel.visibility = View.GONE
-        } else {
-            espDeviceSpinner.visibility = View.VISIBLE
-            deviceListLabel.visibility = View.VISIBLE
-        }
+        // Загрузка сохраненных устройств
+        loadSavedDevices()
 
         // Настройка ползунков
         setupSeekBar(seekBar2800K, percent2800K) { pwm2800K = it }
@@ -126,6 +116,36 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    // Загрузка сохраненных устройств
+    private fun loadSavedDevices() {
+        val sharedPreferences = getSharedPreferences("SavedDevices", MODE_PRIVATE)
+        val savedDevices = sharedPreferences.getStringSet("devices", null)
+        savedDevices?.forEach { device ->
+            espList.add(device)
+        }
+        espListAdapter.notifyDataSetChanged()
+    }
+
+    // Метод для обновления Spinner с именем устройства, IP и статусом
+    private fun updateSpinner(deviceName: String, ipAddress: String, status: String) {
+        val deviceInfo = "$deviceName ($ipAddress) - $status"
+        espList.add(deviceInfo)
+        espListAdapter.notifyDataSetChanged()
+
+        // Сохраняем устройство
+        saveDevice(deviceInfo)
+    }
+
+    // Сохранение устройства в SharedPreferences
+    private fun saveDevice(deviceInfo: String) {
+        val sharedPreferences = getSharedPreferences("SavedDevices", MODE_PRIVATE)
+        val editor = sharedPreferences.edit()
+        val savedDevices = sharedPreferences.getStringSet("devices", mutableSetOf())?.toMutableSet()
+        savedDevices?.add(deviceInfo)
+        editor.putStringSet("devices", savedDevices)
+        editor.apply()
+    }
+
     // Функция для поиска ESP32 или его подключения через точку доступа
     private fun checkControllerConnection() {
         val wifiManager = applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
@@ -135,20 +155,16 @@ class MainActivity : AppCompatActivity() {
         if (currentSSID.contains("ESP32_AP")) {
             espList.add("192.168.4.1")  // IP адрес контроллера в режиме точки доступа
             espListAdapter.notifyDataSetChanged()
-            saveDevices()  // Сохраняем устройства
             Toast.makeText(this@MainActivity, "Подключено к контроллеру", Toast.LENGTH_SHORT).show()
         } else {
             scanLocalNetwork()
         }
-
-        // Обновляем видимость Spinner
-        espDeviceSpinner.visibility = View.VISIBLE
-        deviceListLabel.visibility = View.VISIBLE
     }
 
     // Функция для сканирования локальной сети на наличие устройств ESP32
     private fun scanLocalNetwork() {
         val executor = Executors.newFixedThreadPool(10)
+        var newDevicesFound = false
 
         for (i in 1..254) {
             val ip = "192.168.0.$i"  // Предполагаем, что приложение в сети 192.168.0.x
@@ -168,21 +184,21 @@ class MainActivity : AppCompatActivity() {
                         outputStream.flush()
                         outputStream.close()
 
-                        // Чтение ответа от устройства
                         val responseCode = connection.responseCode
                         if (responseCode == HttpURLConnection.HTTP_OK) {
                             val inputStream = connection.inputStream.bufferedReader().use { it.readText() }
 
-                            // Проверяем, что ответ содержит "SUNLED"
                             if (inputStream.contains("SUNLED")) {
                                 runOnUiThread {
-                                    espList.add(ip)
-                                    espListAdapter.notifyDataSetChanged()
-                                    saveDevices()  // Сохраняем устройства
-                                    Toast.makeText(this@MainActivity, "Найдено устройство: $ip", Toast.LENGTH_SHORT).show()
+                                    // Проверяем, есть ли уже это устройство в списке
+                                    val deviceString = "$ip (Online)"
+                                    if (!espList.contains(deviceString)) {
+                                        espList.add(deviceString)
+                                        espListAdapter.notifyDataSetChanged()
+                                        newDevicesFound = true
+                                        Toast.makeText(this@MainActivity, "Найдено новое устройство: $ip", Toast.LENGTH_SHORT).show()
+                                    }
                                 }
-                            } else {
-                                Log.d("SCAN", "Устройство на IP $ip не ответило 'SUNLED'. Ответ: $inputStream")
                             }
                         }
                     }
@@ -191,28 +207,43 @@ class MainActivity : AppCompatActivity() {
                 }
             }
         }
-    }
 
-    // Функция для сохранения устройств в SharedPreferences
-    private fun saveDevices() {
-        val sharedPreferences = getSharedPreferences(sharedPreferencesName, Context.MODE_PRIVATE)
-        val editor = sharedPreferences.edit()
-        editor.putString("devices", espList.joinToString(","))
-        editor.apply()
-    }
+        // После завершения поиска выводим сообщение, если новых устройств не найдено
+        executor.shutdown()
+        executor.awaitTermination(5, TimeUnit.SECONDS)  // Ожидаем завершения всех потоков
 
-    // Функция для загрузки сохранённых устройств из SharedPreferences
-    private fun loadDevices() {
-        val sharedPreferences = getSharedPreferences(sharedPreferencesName, Context.MODE_PRIVATE)
-        val savedDevices = sharedPreferences.getString("devices", "")
-
-        if (!savedDevices.isNullOrEmpty()) {
-            espList.addAll(savedDevices.split(","))
-            espListAdapter.notifyDataSetChanged()
+        runOnUiThread {
+            if (!newDevicesFound) {
+                Toast.makeText(this@MainActivity, "Новых устройств не найдено", Toast.LENGTH_SHORT).show()
+            }
         }
     }
 
-    // Задача для отправки SSID и пароля на ESP32
+
+    // Метод для показа диалогового окна ввода имени устройства
+    private fun showNameInputDialog(ipAddress: String) {
+        val builder = AlertDialog.Builder(this)
+        builder.setTitle("Введите имя устройства")
+
+        val input = EditText(this)
+        builder.setView(input)
+
+        builder.setPositiveButton("OK") { dialog, _ ->
+            val deviceName = input.text.toString()
+            if (deviceName.isNotEmpty()) {
+                updateSpinner(deviceName, ipAddress, "Online")
+            } else {
+                Toast.makeText(this, "Имя устройства не может быть пустым", Toast.LENGTH_SHORT).show()
+            }
+            dialog.dismiss()
+        }
+
+        builder.setNegativeButton("Отмена") { dialog, _ -> dialog.cancel() }
+
+        builder.show()
+    }
+
+    // Задача для отправки данных SSID и пароля на ESP32
     private inner class SendWiFiDataTask : AsyncTask<String, Void, Void>() {
         override fun doInBackground(vararg params: String?): Void? {
             val ssid = params[0] ?: return null
@@ -255,7 +286,8 @@ class MainActivity : AppCompatActivity() {
         private fun sendPWMValues(pwm2800K: Int, pwm4000K: Int, pwm5000K: Int, pwm5700K: Int) {
             // Получаем выбранное устройство из Spinner
             val selectedDevice = espDeviceSpinner.selectedItem.toString()
-            val url = URL("http://$selectedDevice:80/setPWM")
+            val ipAddress = selectedDevice.substringAfter("(").substringBefore(")")
+            val url = URL("http://$ipAddress:80/setPWM")
             val postData = "2800K=$pwm2800K&4000K=$pwm4000K&5000K=$pwm5000K&5700K=$pwm5700K"
 
             with(url.openConnection() as HttpURLConnection) {
@@ -278,3 +310,4 @@ class MainActivity : AppCompatActivity() {
         }
     }
 }
+
