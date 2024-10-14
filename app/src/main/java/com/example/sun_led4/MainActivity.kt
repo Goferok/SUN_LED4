@@ -137,47 +137,49 @@ class MainActivity : AppCompatActivity() {
     }
     // Настройка ползунка температуры
     private fun setupTemperatureSeekBar() {
-        temperatureSeekBar.max = 2900 // Разница между 2800 и 5700K
+        temperatureSeekBar.max = 2900  // Разница между 2800 и 5700K
+
+        // Устанавливаем шаг в 100 единиц
         temperatureSeekBar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
             override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
-                temperatureValue = 2800 + progress
+                // Округляем значение до ближайших 100
+                val adjustedProgress = (progress / 100) * 100
+                temperatureValue = 2800 + adjustedProgress
                 temperatureTextView.text = "Температура: $temperatureValue K"
             }
 
-            override fun onStartTrackingTouch(seekBar: SeekBar?) {
-                // Можно сделать что-то при начале перетаскивания (если нужно)
-            }
+            override fun onStartTrackingTouch(seekBar: SeekBar?) {}
 
             override fun onStopTrackingTouch(seekBar: SeekBar?) {
-                // Когда пользователь отпустил ползунок, обновляем уровни каналов и отправляем данные
+                // Пересчитываем только при отпускании ползунка
                 updateLEDChannels()
-                sendPWMValuesWithDelay()
             }
         })
     }
+
 
 
 
     // Настройка ползунка яркости
     private fun setupBrightnessSeekBar() {
-        brightnessSeekBar.max = 100 / 5  // Ползунок яркости с шагом 5%
+        brightnessSeekBar.max = 100
         brightnessSeekBar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
             override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
-                brightnessValue = progress * 5
+                // Округляем до ближайших 5%
+                val adjustedProgress = (progress / 5) * 5
+                brightnessValue = adjustedProgress
                 brightnessTextView.text = "Яркость: $brightnessValue%"
             }
 
-            override fun onStartTrackingTouch(seekBar: SeekBar?) {
-                // Можно сделать что-то при начале перетаскивания (если нужно)
-            }
+            override fun onStartTrackingTouch(seekBar: SeekBar?) {}
 
             override fun onStopTrackingTouch(seekBar: SeekBar?) {
-                // Когда пользователь отпустил ползунок, обновляем уровни каналов и отправляем данные
+                // Обновляем каналы только при отпускании ползунка
                 updateLEDChannels()
-                sendPWMValuesWithDelay()
             }
         })
     }
+
 
 
     // Обновление значений каналов на основе выбранной температуры и яркости
