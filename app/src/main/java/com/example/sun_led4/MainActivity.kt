@@ -8,23 +8,35 @@ import android.os.Handler
 import android.os.Looper
 import android.util.Log
 import android.widget.*
-import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import java.io.OutputStream
 import java.net.HttpURLConnection
-import java.net.InetAddress
+import java.net.InetSocketAddress
+import java.net.Socket
 import java.net.URL
-import java.util.concurrent.Executors
-import java.util.concurrent.TimeUnit
-import org.json.JSONObject
+import java.net.DatagramPacket
+import java.net.InetAddress
+import javax.jmdns.JmDNS
+import javax.jmdns.ServiceInfo
+import javax.jmdns.ServiceEvent
+import javax.jmdns.ServiceListener
+import android.view.View
+import java.io.BufferedReader
+import java.io.InputStreamReader
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
+
+import org.json.JSONObject
 
 class MainActivity : AppCompatActivity() {
 
     private var pwmUpdateHandler = Handler(Looper.getMainLooper())
     private var pwmUpdateRunnable: Runnable? = null
     private val pwmUpdateDelay: Long = 100  // Задержка 100 мс между отправками
-
+    private lateinit var switchRelayButton: Button
     private lateinit var seekBar2800K: SeekBar
     private lateinit var percent2800K: TextView
     private lateinit var seekBar4000K: SeekBar
@@ -50,6 +62,8 @@ class MainActivity : AppCompatActivity() {
     private var pwm5700K: Int = 0
     private var temperatureValue: Int = 2800  // Значение температуры
     private var brightnessValue: Int = 100    // Значение яркости
+    private var isLampOn = false // Переменная для отслеживания состояния лампы
+    private var lastPwmValues = intArrayOf(0, 0, 0, 0) // Массив для хранения последних значений PWM
 
     private val espList = mutableListOf<String>()
     private lateinit var espListAdapter: ArrayAdapter<String>
@@ -77,53 +91,38 @@ class MainActivity : AppCompatActivity() {
         findESPButton = findViewById(R.id.findESPButton)
         espDeviceSpinner = findViewById(R.id.deviceSpinner)
         deviceListLabel = findViewById(R.id.deviceListLabel)
-
+        switchRelayButton = findViewById(R.id.switchRelayButton)
         espListAdapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, espList)
         espListAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
         espDeviceSpinner.adapter = espListAdapter
 
-        // Если устройство уже выбрано, запросим состояние контроллера
-        if (espDeviceSpinner.selectedItem != null) {
-            requestControllerState()
+
+        // Добавляем обработчик выбора элемента в спиннере
+        espDeviceSpinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(parent: AdapterView<*>, view: View, position: Int, id: Long) {
+                fetchCurrentState()  // Запрос текущего состояния выбранного устройства
+            }
+
+            override fun onNothingSelected(parent: AdapterView<*>) {
+                // Ничего не делаем, если ничего не выбрано
+            }
         }
 
         // Загрузка сохраненных устройств
         loadSavedDevices()
 
-        // Если есть устройства в списке, выбираем первое и запрашиваем состояние
-        if (espList.isNotEmpty()) {
-            espDeviceSpinner.setSelection(0)
-            requestControllerState() // Запрашиваем состояние контроллера
-        }
-
         findESPButton.setOnClickListener {
-            checkControllerConnection()
-            // Запрашиваем текущее состояние контроллера после его обнаружения
-            requestControllerState()
+            findDevicesUsingMDNS()
+        }
+        switchRelayButton.setOnClickListener {
+            toggleLamp() // Вызов функции переключения состояния лампы
         }
 
-        // Настройка ползунков для каждого канала
+        // Настройка ползунков
         setupSeekBar(seekBar2800K, percent2800K) { pwm2800K = it }
         setupSeekBar(seekBar4000K, percent4000K) { pwm4000K = it }
         setupSeekBar(seekBar5000K, percent5000K) { pwm5000K = it }
         setupSeekBar(seekBar5700K, percent5700K) { pwm5700K = it }
-
-        // Внутри onCreate добавляем обработчик для кнопки включения/выключения реле
-        val switchRelayButton: Button = findViewById(R.id.switchRelayButton)
-        var isRelayOn: Boolean = false  // Переменная для отслеживания состояния реле
-
-        switchRelayButton.setOnClickListener {
-            // Переключаем состояние реле
-            isRelayOn = !isRelayOn
-            val relayState = if (isRelayOn) "on" else "off"
-
-            // Обновляем текст кнопки в зависимости от состояния реле
-            switchRelayButton.text = if (isRelayOn) "Выключить лампу" else "Включить лампу"
-
-            // Отправляем команду на ESP32 для изменения состояния реле
-            SendRelayTask().execute(relayState)
-        }
-
 
         // Настройка ползунков температуры и яркости
         setupTemperatureSeekBar()
@@ -132,24 +131,27 @@ class MainActivity : AppCompatActivity() {
         sendWiFiDataButton.setOnClickListener {
             val ssid = ssidEditText.text.toString()
             val password = passwordEditText.text.toString()
-            SendWiFiDataTask().execute(ssid, password)
+
         }
 
-        findESPButton.setOnClickListener {
-            checkControllerConnection()
-        }
     }
 
     // Определение метода sendPWMValues, который вызывает SendPWMTask
     private fun sendPWMValues() {
         SendPWMTask().execute(pwm2800K, pwm4000K, pwm5000K, pwm5700K)
     }
+    // Функция для обновления состояния лампы
+    private fun updateLampState() {
+        isLampOn = (pwm2800K > 0 || pwm4000K > 0 || pwm5000K > 0 || pwm5700K > 0)
 
+        // Обновляем текст кнопки в зависимости от состояния лампы
+        switchRelayButton.text = if (isLampOn) "Выключить лампу" else "Включить лампу"
+    }
     // Функция для настройки ползунков
     private fun setupSeekBar(seekBar: SeekBar, percentView: TextView, onChange: (Int) -> Unit) {
         seekBar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
             override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
-                // Отображаем текущее значение в текстовом поле, но не отправляем на контроллер
+                // Отображаем текущее значение в текстовом поле
                 percentView.text = "$progress%"
             }
 
@@ -159,43 +161,13 @@ class MainActivity : AppCompatActivity() {
                 // Когда пользователь отпустил ползунок, обновляем значение PWM
                 val progress = seekBar?.progress ?: 0
                 onChange(progress)
+
+                // Обновляем состояние лампы
+                updateLampState()
                 updateTemperature()  // Пересчёт температуры
-                sendPWMValuesWithDelay()  // Отправляем PWM с задержкой, чтобы избежать частых обновлений
+                sendPWMValuesWithDelay()  // Отправляем PWM с задержкой
             }
         })
-    }
-
-    private inner class SendRelayTask : AsyncTask<String, Void, Void>() {
-        override fun doInBackground(vararg params: String?): Void? {
-            val relayState = params[0] ?: return null
-
-            // Получаем IP-адрес выбранного устройства
-            val selectedDevice = espDeviceSpinner.selectedItem.toString()
-            val ipAddress = selectedDevice.substringAfter("(").substringBefore(")")
-            val url = URL("http://$ipAddress:80/setRelay")
-
-            // Формируем POST-запрос с состоянием реле
-            val postData = "state=$relayState"
-
-            with(url.openConnection() as HttpURLConnection) {
-                requestMethod = "POST"
-                setRequestProperty("Content-Type", "application/x-www-form-urlencoded")
-
-                doOutput = true
-                val outputStream: OutputStream = outputStream
-                outputStream.write(postData.toByteArray(Charsets.UTF_8))
-                outputStream.flush()
-                outputStream.close()
-
-                val responseCode = responseCode
-                if (responseCode == HttpURLConnection.HTTP_OK) {
-                    println("Relay state sent successfully: $relayState")
-                } else {
-                    println("Error sending relay state: $responseCode")
-                }
-            }
-            return null
-        }
     }
 
     // Обновление значений температуры
@@ -209,6 +181,116 @@ class MainActivity : AppCompatActivity() {
             temperatureTextView.text = "Температура свечения: N/A"
         }
     }
+    // Поиск устройств ESP32
+    private fun findDevicesUsingMDNS() {
+        espList.clear()  // Очищаем текущий список устройств
+        espListAdapter.notifyDataSetChanged()  // Обновляем адаптер спиннера
+
+        AsyncTask.execute {
+            try {
+                // Инициализация JmDNS
+                val jmdns = JmDNS.create(InetAddress.getByName("0.0.0.0")) // Используем любой адрес
+
+                // Создаем слушателя сервисов
+                val serviceListener = object : ServiceListener {
+                    override fun serviceAdded(event: ServiceEvent) {
+                        jmdns.requestServiceInfo(event.type, event.name) // Запрос информации о сервисе
+                    }
+
+                    override fun serviceRemoved(event: ServiceEvent) {
+                        Log.d("FIND_DEVICES", "Сервис удален: ${event.name}")
+                    }
+
+                    override fun serviceResolved(event: ServiceEvent) {
+                        val serviceInfo = event.info
+                        val hostAddress = serviceInfo.hostAddresses.firstOrNull() // Получаем IP-адрес устройства
+
+                        // Проверяем, содержится ли "esp" в имени сервиса
+                        if (event.name.contains("esp", ignoreCase = true) && hostAddress != null) {
+                            // Добавляем устройство в список
+                            val deviceInfo = "$hostAddress (Online)"
+                            espList.add(deviceInfo)
+
+                            // Обновляем спиннер на основном потоке
+                            runOnUiThread {
+                                espListAdapter.notifyDataSetChanged()
+                                Toast.makeText(this@MainActivity, "Устройство найдено: $deviceInfo", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    }
+                }
+
+                // Регистрируем слушатель
+                jmdns.addServiceListener("_http._tcp.local.", serviceListener)
+
+                // Удерживаем программу открытой, пока не закончится поиск
+                Thread.sleep(10000) // Установите желаемое время ожидания поиска
+
+                // Закрытие JmDNS
+                jmdns.close() // Закрываем JmDNS после завершения поиска
+            } catch (e: Exception) {
+                Log.e("FIND_DEVICES", "Ошибка при поиске устройств: ${e.message}")
+                runOnUiThread {
+                    Toast.makeText(this@MainActivity, "Ошибка при поиске устройств: ${e.message}", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+    }
+    //Получение состояния лампы с контроллера
+    private fun fetchCurrentState() {
+        val selectedDevice = espDeviceSpinner.selectedItem.toString()
+        val ipAddress = selectedDevice.substringBefore(" (") // Извлечение IP адреса
+
+        val url = URL("http://$ipAddress/getState")
+
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                Log.d("FETCH_STATE", "Запрос к $url")
+                val connection = url.openConnection() as HttpURLConnection
+                connection.requestMethod = "GET"
+                connection.connect()
+
+                val responseCode = connection.responseCode
+                Log.d("FETCH_STATE", "Код ответа: $responseCode")
+
+                if (responseCode == HttpURLConnection.HTTP_OK) {
+                    val inputStream = connection.inputStream
+                    val reader = BufferedReader(InputStreamReader(inputStream))
+                    val jsonResponse = StringBuilder()
+                    var line: String?
+
+                    while (reader.readLine().also { line = it } != null) {
+                        jsonResponse.append(line)
+                    }
+                    reader.close()
+
+                    // Парсинг JSON
+                    val jsonObject = JSONObject(jsonResponse.toString())
+                    pwm2800K = jsonObject.getInt("pwm2800K")
+                    pwm4000K = jsonObject.getInt("pwm4000K")
+                    pwm5000K = jsonObject.getInt("pwm5000K")
+                    pwm5700K = jsonObject.getInt("pwm5700K")
+                    brightnessValue = jsonObject.getInt("brightness")
+                    val relayState = jsonObject.getBoolean("relayState")
+
+                    // Обновление ползунков и состояний в UI
+                    withContext(Dispatchers.Main) {
+                        updateSeekBars()
+                        switchRelayButton.text = if (relayState) "Выключить лампу" else "Включить лампу"
+                    }
+                } else {
+                    Log.e("FETCH_STATE", "Ошибка получения состояния: $responseCode")
+                }
+            } catch (e: Exception) {
+                Log.e("FETCH_STATE", "Ошибка: ${e.message}")
+            }
+        }
+    }
+
+
+
+
+
 
     // Настройка ползунка температуры
     private fun setupTemperatureSeekBar() {
@@ -230,7 +312,85 @@ class MainActivity : AppCompatActivity() {
             }
         })
     }
+    // Функция для обновления состояния реле
+    private fun updateRelayState() {
+        // Если хотя бы один ползунок не равен 0, то реле включается
+        if (isLampOn) {
+            sendRelayState(true)  // Отправляем команду на включение реле
+        } else {
+            sendRelayState(false)  // Отправляем команду на выключение реле
+        }
+    }
 
+    // Функция для отправки состояния реле на устройство
+    private fun sendRelayState(state: Boolean) {
+        val selectedDevice = espDeviceSpinner.selectedItem.toString()
+        val ipAddress = selectedDevice.substringBefore(" (") // Извлекаем IP-адрес устройства
+
+        val url = URL("http://$ipAddress/setRelay?state=${if (state) "on" else "off"}")
+
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                val connection = url.openConnection() as HttpURLConnection
+                connection.requestMethod = "POST"
+                connection.connect()
+
+                val responseCode = connection.responseCode
+                if (responseCode == HttpURLConnection.HTTP_OK) {
+                    Log.d("SEND_RELAY_STATE", "Состояние реле успешно обновлено.")
+                } else {
+                    Log.e("SEND_RELAY_STATE", "Ошибка обновления состояния реле: $responseCode")
+                }
+            } catch (e: Exception) {
+                Log.e("SEND_RELAY_STATE", "Ошибка: ${e.message}")
+            }
+        }
+    }
+    // Функция для переключения состояния лампы
+    private fun toggleLamp() {
+        if (isLampOn) {
+            // Сохраняем текущие значения ползунков
+            lastPwmValues[0] = pwm2800K
+            lastPwmValues[1] = pwm4000K
+            lastPwmValues[2] = pwm5000K
+            lastPwmValues[3] = pwm5700K
+
+            // Выключаем лампу, выставляем все ползунки в 0
+            pwm2800K = 0
+            pwm4000K = 0
+            pwm5000K = 0
+            pwm5700K = 0
+
+            // Обновляем ползунки
+            updateSeekBars()
+
+            // Обновляем состояние лампы
+            isLampOn = false
+            switchRelayButton.text = "Включить лампу" // Обновляем текст кнопки
+        } else {
+            // Включаем лампу, восстанавливаем последние сохраненные значения
+            pwm2800K = lastPwmValues[0]
+            pwm4000K = lastPwmValues[1]
+            pwm5000K = lastPwmValues[2]
+            pwm5700K = lastPwmValues[3]
+
+            // Обновляем ползунки
+            updateSeekBars()
+
+            // Обновляем состояние лампы
+            isLampOn = true
+            switchRelayButton.text = "Выключить лампу" // Обновляем текст кнопки
+        }
+
+        // Обновляем состояние реле
+        updateRelayState()
+
+        // Отправляем новые PWM значения на устройство
+        sendPWMValues()
+    }
+    private fun scalePWM(pwmValue: Int): Int {
+        return (pwmValue * 2.55).toInt().coerceIn(0, 255)
+    }
     // Настройка ползунка яркости
     private fun setupBrightnessSeekBar() {
         brightnessSeekBar.max = 100
@@ -248,7 +408,27 @@ class MainActivity : AppCompatActivity() {
             }
         })
     }
+    private fun updateSeekBars() {
+        // Обновление UI для ползунков
+        seekBar2800K.progress = (scalePWM(pwm2800K) * 100) / 255
+        seekBar4000K.progress = (scalePWM(pwm4000K) * 100) / 255
+        seekBar5000K.progress = (scalePWM(pwm5000K) * 100) / 255
+        seekBar5700K.progress = (scalePWM(pwm5700K) * 100) / 255
+    }
 
+    // Проверяем доступность устройства
+    private fun isDeviceAvailable(ipAddress: String): Boolean {
+        return try {
+            // Проверяем доступность устройства с помощью сокета
+            val socket = Socket()
+            socket.connect(InetSocketAddress(ipAddress, 80), 1000) // Тайм-аут 1 секунда
+            socket.close()
+            true
+        } catch (e: Exception) {
+            Log.e("IS_DEVICE_AVAILABLE", "Ошибка проверки доступности устройства: ${e.message}")
+            false
+        }
+    }
     // Обновление значений каналов на основе температуры и яркости
     private fun updateLEDChannels() {
         val normalizedBrightness = brightnessValue / 100.0
@@ -268,10 +448,8 @@ class MainActivity : AppCompatActivity() {
             val relativeTemp = (temperatureValue - 2800).toFloat() / tempRange
 
             pwm2800K = ((1 - relativeTemp) * normalizedBrightness * 255).toInt()
-            pwm4000K =
-                ((1 - Math.abs(0.5f - relativeTemp) * 2) * normalizedBrightness * 255).toInt()
-            pwm5000K =
-                ((1 - Math.abs(0.5f - relativeTemp) * 2) * normalizedBrightness * 255).toInt()
+            pwm4000K = ((1 - Math.abs(0.5f - relativeTemp) * 2) * normalizedBrightness * 255).toInt()
+            pwm5000K = ((1 - Math.abs(0.5f - relativeTemp) * 2) * normalizedBrightness * 255).toInt()
             pwm5700K = (relativeTemp * normalizedBrightness * 255).toInt()
         }
 
@@ -289,211 +467,11 @@ class MainActivity : AppCompatActivity() {
     private fun loadSavedDevices() {
         val sharedPreferences = getSharedPreferences("SavedDevices", MODE_PRIVATE)
         val savedDevices = sharedPreferences.getStringSet("devices", null)
-        savedDevices?.forEach { device ->
-            espList.add(device)
-        }
+        savedDevices?.forEach { device -> espList.add(device) }
         espListAdapter.notifyDataSetChanged()
     }
-    private fun requestControllerState() {
-        val selectedDevice = espDeviceSpinner.selectedItem.toString()
-        val ipAddress = selectedDevice.substringAfter("(").substringBefore(")")
-        val url = URL("http://$ipAddress:80/getState")
 
-        AsyncTask.execute {
-            try {
-                val connection = url.openConnection() as HttpURLConnection
-                connection.requestMethod = "GET"
-                connection.connectTimeout = 10000  // Увеличьте таймаут до 10 секунд
-
-                val responseCode = connection.responseCode
-                if (responseCode == HttpURLConnection.HTTP_OK) {
-                    val inputStream = connection.inputStream.bufferedReader().use { it.readText() }
-                    Log.d("RESPONSE", "Ответ от сервера: $inputStream")
-                    val jsonObject = JSONObject(inputStream)
-
-                    runOnUiThread {
-                        // Обновление ползунков и переключателя реле на основе данных с контроллера
-                        pwm2800K = jsonObject.getInt("pwm2800K")
-                        pwm4000K = jsonObject.getInt("pwm4000K")
-                        pwm5000K = jsonObject.getInt("pwm5000K")
-                        pwm5700K = jsonObject.getInt("pwm5700K")
-                        brightnessValue = jsonObject.getInt("brightness")
-                        val relayState = jsonObject.getBoolean("relayState")
-
-                        // Обновляем ползунки
-                        seekBar2800K.progress = (pwm2800K * 100) / 255
-                        seekBar4000K.progress = (pwm4000K * 100) / 255
-                        seekBar5000K.progress = (pwm5000K * 100) / 255
-                        seekBar5700K.progress = (pwm5700K * 100) / 255
-                        brightnessSeekBar.progress = brightnessValue
-
-                        // Обновляем состояние реле
-                        val switchRelayButton: Button = findViewById(R.id.switchRelayButton)
-                        switchRelayButton.text = if (relayState) "Выключить лампу" else "Включить лампу"
-                    }
-                } else {
-                    Log.e("ERROR", "Ошибка получения состояния: $responseCode")
-                }
-            } catch (e: Exception) {
-                Log.e("ERROR", "Ошибка соединения: ${e.message}")
-                e.printStackTrace()
-            }
-        }
-    }
-
-
-    // Метод для обновления Spinner с именем устройства, IP и статусом
-    private fun updateSpinner(deviceName: String, ipAddress: String, status: String) {
-        val deviceInfo = "$deviceName ($ipAddress) - $status"
-        espList.add(deviceInfo)
-        espListAdapter.notifyDataSetChanged()
-
-        // Сохраняем устройство
-        saveDevice(deviceInfo)
-    }
-
-    // Сохранение устройства в SharedPreferences
-    private fun saveDevice(deviceInfo: String) {
-        val sharedPreferences = getSharedPreferences("SavedDevices", MODE_PRIVATE)
-        val editor = sharedPreferences.edit()
-        val savedDevices = sharedPreferences.getStringSet("devices", mutableSetOf())?.toMutableSet()
-        savedDevices?.add(deviceInfo)
-        editor.putStringSet("devices", savedDevices)
-        editor.apply()
-    }
-
-    // Поиск контроллера ESP32
-    private fun checkControllerConnection() {
-        val wifiManager = applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
-        val currentSSID = wifiManager.connectionInfo.ssid
-
-        // Проверяем подключение к сети контроллера
-        if (currentSSID.contains("ESP32_AP")) {
-            espList.add("192.168.4.1")
-            espListAdapter.notifyDataSetChanged()
-            Toast.makeText(this@MainActivity, "Подключено к контроллеру", Toast.LENGTH_SHORT).show()
-        } else {
-            scanLocalNetwork()
-        }
-    }
-
-    // Сканирование локальной сети для устройств ESP32
-    private fun scanLocalNetwork() {
-        val executor = Executors.newFixedThreadPool(10)
-        var newDevicesFound = false
-
-        for (i in 1..254) {
-            val ip = "192.168.0.$i"  // Предполагаем, что приложение в сети 192.168.0.x
-            executor.execute {
-                try {
-                    val address = InetAddress.getByName(ip)
-                    if (address.isReachable(100)) {
-                        Log.d("SCAN", "Проверяем IP: $ip")
-                        val url = URL("http://$ip:80")
-                        val connection = url.openConnection() as HttpURLConnection
-                        connection.requestMethod = "POST"
-                        connection.setRequestProperty("Content-Type", "text/plain")
-                        connection.doOutput = true
-
-                        val outputStream: OutputStream = connection.outputStream
-                        outputStream.write("SUNLED".toByteArray())
-                        outputStream.flush()
-                        outputStream.close()
-
-                        val responseCode = connection.responseCode
-                        if (responseCode == HttpURLConnection.HTTP_OK) {
-                            val inputStream =
-                                connection.inputStream.bufferedReader().use { it.readText() }
-
-                            if (inputStream.contains("SUNLED")) {
-                                runOnUiThread {
-                                    val deviceString = "$ip (Online)"
-                                    if (!espList.contains(deviceString)) {
-                                        espList.add(deviceString)
-                                        espListAdapter.notifyDataSetChanged()
-                                        newDevicesFound = true
-                                        Toast.makeText(
-                                            this@MainActivity,
-                                            "Найдено новое устройство: $ip",
-                                            Toast.LENGTH_SHORT
-                                        ).show()
-                                    }
-                                }
-                            }
-                        }
-                    }
-                } catch (e: Exception) {
-                    e.printStackTrace()
-                }
-            }
-        }
-
-        // Сообщение по завершении поиска
-        executor.shutdown()
-        executor.awaitTermination(5, TimeUnit.SECONDS)
-
-        runOnUiThread {
-            if (!newDevicesFound) {
-                Toast.makeText(this@MainActivity, "Новых устройств не найдено", Toast.LENGTH_SHORT)
-                    .show()
-            }
-        }
-    }
-
-    // Показ диалога ввода имени устройства
-    private fun showNameInputDialog(ipAddress: String) {
-        val builder = AlertDialog.Builder(this)
-        builder.setTitle("Введите имя устройства")
-
-        val input = EditText(this)
-        builder.setView(input)
-
-        builder.setPositiveButton("OK") { dialog, _ ->
-            val deviceName = input.text.toString()
-            if (deviceName.isNotEmpty()) {
-                updateSpinner(deviceName, ipAddress, "Online")
-            } else {
-                Toast.makeText(this, "Имя устройства не может быть пустым", Toast.LENGTH_SHORT)
-                    .show()
-            }
-            dialog.dismiss()
-        }
-
-        builder.setNegativeButton("Отмена") { dialog, _ -> dialog.cancel() }
-
-        builder.show()
-    }
-
-    // Отправка данных Wi-Fi на ESP32
-    private inner class SendWiFiDataTask : AsyncTask<String, Void, Void>() {
-        override fun doInBackground(vararg params: String?): Void? {
-            val ssid = params[0] ?: return null
-            val password = params[1] ?: return null
-            val url = URL("http://192.168.4.1:80/setWiFi")
-            val postData = "ssid=$ssid&password=$password"
-
-            with(url.openConnection() as HttpURLConnection) {
-                requestMethod = "POST"
-                setRequestProperty("Content-Type", "application/x-www-form-urlencoded")
-
-                doOutput = true
-                val outputStream: OutputStream = outputStream
-                outputStream.write(postData.toByteArray(Charsets.UTF_8))
-                outputStream.flush()
-                outputStream.close()
-
-                val responseCode = responseCode
-                if (responseCode == HttpURLConnection.HTTP_OK) {
-                    println("WiFi data sent successfully")
-                } else {
-                    println("Error sending WiFi data: $responseCode")
-                }
-            }
-            return null
-        }
-    }
-
-    // Отправка данных PWM с задержкой
+    // Метод для отправки PWM значений с задержкой
     private fun sendPWMValuesWithDelay() {
         pwmUpdateRunnable?.let { pwmUpdateHandler.removeCallbacks(it) }  // Отменяем предыдущий запрос
         pwmUpdateRunnable = Runnable {
@@ -509,25 +487,33 @@ class MainActivity : AppCompatActivity() {
             val pwm4000K = pwmValues[1] ?: return null
             val pwm5000K = pwmValues[2] ?: return null
             val pwm5700K = pwmValues[3] ?: return null
-            sendPWMValues(pwm2800K, pwm4000K, pwm5000K, pwm5700K)
+
+            // Получаем выбранное устройство из спиннера
+            val selectedDevice = espDeviceSpinner.selectedItem.toString()
+            val ipAddress = selectedDevice.substringBefore(" (") // Извлекаем IP-адрес из строки
+
+            // Проверка подключения к ESP32 перед отправкой
+            if (isDeviceAvailable(ipAddress)) {
+                sendPWMValues(ipAddress, pwm2800K, pwm4000K, pwm5000K, pwm5700K)
+            } else {
+                Log.e("SEND_PWM_TASK", "Устройство недоступно. Не удалось отправить PWM значения.")
+            }
             return null
         }
 
-        private fun scalePWM(pwmValue: Int): Int {
-            return (pwmValue * 2.55).toInt().coerceIn(0, 255)
-        }
 
-        private fun sendPWMValues(pwm2800K: Int, pwm4000K: Int, pwm5000K: Int, pwm5700K: Int) {
+        // Метод для отправки PWM значений
+        private fun sendPWMValues() {
+            SendPWMTask().execute(pwm2800K, pwm4000K, pwm5000K, pwm5700K)
+        }
+        private fun sendPWMValues(ipAddress: String, pwm2800K: Int, pwm4000K: Int, pwm5000K: Int, pwm5700K: Int) {
             val scaledPwm2800K = scalePWM(pwm2800K)
             val scaledPwm4000K = scalePWM(pwm4000K)
             val scaledPwm5000K = scalePWM(pwm5000K)
             val scaledPwm5700K = scalePWM(pwm5700K)
 
-            val selectedDevice = espDeviceSpinner.selectedItem.toString()
-            val ipAddress = selectedDevice.substringAfter("(").substringBefore(")")
-            val url = URL("http://$ipAddress:80/setPWM")
-            val postData =
-                "2800K=$scaledPwm2800K&4000K=$scaledPwm4000K&5000K=$scaledPwm5000K&5700K=$scaledPwm5700K"
+            val url = URL("http://$ipAddress:80/setPWM") // Используем IP-адрес устройства
+            val postData = "2800K=$scaledPwm2800K&4000K=$scaledPwm4000K&5000K=$scaledPwm5000K&5700K=$scaledPwm5700K"
 
             with(url.openConnection() as HttpURLConnection) {
                 requestMethod = "POST"
@@ -541,13 +527,15 @@ class MainActivity : AppCompatActivity() {
 
                 val responseCode = responseCode
                 if (responseCode == HttpURLConnection.HTTP_OK) {
-                    println("PWM values sent successfully to $selectedDevice")
+                    Log.d("SEND_PWM_TASK", "PWM values sent successfully to $ipAddress.")
                 } else {
-                    println("Error sending PWM values to $selectedDevice: $responseCode")
+                    Log.e("SEND_PWM_TASK", "Error sending PWM values to $ipAddress: $responseCode")
                 }
             }
         }
-    }
-}
 
+    }
+
+
+}
 

@@ -57,7 +57,9 @@ dependencies {
     implementation("androidx.activity:activity-ktx:1.6.1")
     implementation("androidx.appcompat:appcompat:1.6.1")
     implementation ("org.jmdns:jmdns:3.5.5")
-
+    implementation ("org.jmdns:jmdns:3.5.5")
+    implementation ("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.6.0")
+    implementation ("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.6.0")
 
     // Тестирование
     testImplementation("junit:junit:4.13.2")
